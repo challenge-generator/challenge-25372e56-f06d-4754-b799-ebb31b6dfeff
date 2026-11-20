@@ -1,0 +1,131 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: resiliencia-banca
+  profiles:
+    active: default
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,circuitbreakers,retry,bulkhead,ratelimiter
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    retry:
+      enabled: true
+    bulkhead:
+      enabled: true
+    ratelimiter:
+      enabled: true
+
+resilience4j:
+  retry:
+    instances:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientResponseException$ServiceUnavailable
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        ignoreExceptions:
+          - java.lang.IllegalArgumentException
+      paymentService:
+        maxAttempts: 5
+        waitDuration: 1000ms
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+      accountService:
+        maxAttempts: 3
+        waitDuration: 800ms
+        retryExceptions:
+          - java.io.IOException
+
+  circuitbreaker:
+    instances:
+      default:
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        ringBufferSizeInHalfOpenState: 10
+        ringBufferSizeInClosedState: 100
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientResponseException
+        ignoreExceptions:
+          - java.lang.IllegalArgumentException
+      paymentService:
+        failureRateThreshold: 40
+        waitDurationInOpenState: 60s
+        ringBufferSizeInHalfOpenState: 15
+        ringBufferSizeInClosedState: 200
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+      accountService:
+        failureRateThreshold: 60
+        waitDurationInOpenState: 20s
+        ringBufferSizeInHalfOpenState: 8
+        ringBufferSizeInClosedState: 50
+
+  bulkhead:
+    instances:
+      default:
+        maxConcurrentCalls: 10
+        maxWaitDuration: 5000ms
+      paymentService:
+        maxConcurrentCalls: 5
+        maxWaitDuration: 3000ms
+      accountService:
+        maxConcurrentCalls: 15
+        maxWaitDuration: 8000ms
+
+  ratelimiter:
+    instances:
+      default:
+        limitForPeriod: 100
+        limitRefreshPeriod: 1s
+        timeoutDuration: 5000ms
+      paymentService:
+        limitForPeriod: 50
+        limitRefreshPeriod: 1s
+        timeoutDuration: 3000ms
+      accountService:
+        limitForPeriod: 200
+        limitRefreshPeriod: 1s
+        timeoutDuration: 5000ms
+
+logging:
+  level:
+    root: INFO
+    com.example: DEBUG
+    io.github.resilience4j: DEBUG
+    reactor.netty: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+app:
+  services:
+    payment:
+      base-url: http://localhost:8081
+      timeout: 5000
+    account:
+      base-url: http://localhost:8082
+      timeout: 3000
+  fallback:
+    enabled: true
+    default-message: "Servicio temporalmente no disponible. Por favor, intente más tarde."
+    default-status: "UNAVAILABLE"
